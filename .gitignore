@@ -6,3 +6,7 @@ __pycache__/
 # artefatos gerados pelo make-app.sh e binarios de terceiros (nunca versionar)
 EBS-Browser.app/
 jws/
+# build portatil
+.build/
+dist-*/
+*.zip

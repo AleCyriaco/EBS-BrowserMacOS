@@ -28,11 +28,20 @@ OWS_APP  = "/Applications/OpenWebStart/OpenWebStart javaws.app"
 OWS_STUB = OWS_APP + "/Contents/MacOS/JavaApplicationStub"
 # Runtime JWS EMBUTIDO no bundle: JRE 8 + motor IcedTea-Web (openwebstart.jar). Sem OpenWebStart
 # externo. O launcher do .app exporta EBS_BUNDLE; rodando pelo run.sh cai no /Applications.
-BUNDLE   = os.environ.get("EBS_BUNDLE") or "/Applications/EBS-Browser.app"
+def _bundle_dir():
+    """Caminho do .app: (1) EBS_BUNDLE exportado pelo launcher; (2) app congelado pelo
+    PyInstaller (Contents/MacOS/EBS-Browser -> 3 niveis acima); (3) instalacao padrao."""
+    if os.environ.get("EBS_BUNDLE"):
+        return os.environ["EBS_BUNDLE"]
+    if getattr(sys, "frozen", False):
+        return os.path.abspath(os.path.join(os.path.dirname(sys.executable), "..", ".."))
+    return "/Applications/EBS-Browser.app"
+BUNDLE   = _bundle_dir()
 JWS_DIR  = os.path.join(BUNDLE, "Contents", "Resources", "jws")
 JWS_JAVA = os.path.join(JWS_DIR, "jre", "bin", "java")
 JWS_JAR  = os.path.join(JWS_DIR, "openwebstart.jar")
-ICON_PNG = os.path.join(os.path.dirname(os.path.abspath(__file__)), "icon-1024.png")
+# congelado: os dados extras ficam em sys._MEIPASS; no fonte, ao lado do script
+ICON_PNG = os.path.join(getattr(sys, "_MEIPASS", os.path.dirname(os.path.abspath(__file__))), "icon-1024.png")
 DEFAULT_EBS = "http://apps.example.com:8000"
 # O launcher de Forms do EBS escolhe JWS (JNLP) pelo User-Agent. Com o UA do QtWebEngine ele
 # cai no modo applet (pagina HTML so com o copyright). Com UA de Firefox, gera o JNLP.
@@ -40,13 +49,25 @@ FIREFOX_UA = "Mozilla/5.0 (Macintosh; Intel Mac OS X 10.15; rv:128.0) Gecko/2010
 
 LOG_FILE = os.path.expanduser("~/Library/Logs/EBS-Browser.log")
 
+def _stdout_is_logfile():
+    try:
+        return os.path.samestat(os.fstat(1), os.stat(LOG_FILE))
+    except Exception:
+        return False
+
+
 def log(*a):
     """stdout E arquivo: o log tem que existir seja qual for a forma de lancamento (.app/open/run.sh)."""
     line = time.strftime("%H:%M:%S") + " " + " ".join(str(x) for x in a)
-    print(line, flush=True)
-    # Lancado pelo .app, o stdout JA e o arquivo de log (redirecionado pelo launcher):
-    # gravar de novo duplicava cada linha. So grava no arquivo quando stdout e um terminal.
-    if not sys.stdout.isatty():
+    if sys.stdout is not None:             # None ou NullWriter num app PyInstaller --windowed
+        try:
+            print(line, flush=True)
+        except Exception:
+            pass
+    # Lancado pelo launcher do .app, o fd 1 JA e o arquivo de log (redirecionado): gravar
+    # de novo duplicava cada linha. Decidimos pelo INODE, nao por isatty() — o NullWriter
+    # do PyInstaller nao e tty e nao e None, e enganava o teste anterior.
+    if _stdout_is_logfile():
         return
     try:
         os.makedirs(os.path.dirname(LOG_FILE), exist_ok=True)
